@@ -1,11 +1,11 @@
-name: Book LCL
+name: Reserva la clase de crossfit del lunes a las 20h
 
 on:
   schedule:
     # GitHub Actions cron times are ALWAYS UTC.
     # Madrid is UTC+1 in winter (CET) and UTC+2 in summer (CEST).
-    - cron: "10 10 * 1,2,11,12 *"   # Winter (Nov-Feb): 10:25 UTC = 11:25 CET  (UTC+1)
-    - cron: "00 8 * 3-10 *"         # Summer (Mar-Oct): 09:25 UTC = 11:25 CEST (UTC+2)
+    - cron: "19 02 * 1,2,11,12 * FRI"   # Winter (Nov-Feb): 16:15 UTC = 17:15 CET  (UTC+1)
+    - cron: "20 02 * 3-10 * FRI"        # Summer (Mar-Oct): 15:15 UTC = 17:15 CEST (UTC+2)
   workflow_dispatch:              # Manual trigger
 
 jobs:
@@ -33,10 +33,10 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           # TARGET_HOUR_GMT1: booking open time in Madrid local time (NOT UTC).
           # The Python script (wait_until_target_time) converts this to UTC internally using pytz.
-          TARGET_HOUR_GMT1: 12
+          TARGET_HOUR_GMT1: 20
           TARGET_MINUTE: 00
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          echo "🚀 Processing Box 9907..."
-          python main.py --days-ahead 2 --schedule schedule_9907.json
+          echo "🚀 Reservando clase..."
+          python main.py --days-ahead 3

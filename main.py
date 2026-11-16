@@ -5,15 +5,12 @@ Automatically books classes based on a predefined schedule.
 """
 
 import argparse
-import json
 import os
 import sys
-import time
 from datetime import datetime, timedelta
 from typing import Optional
 
 import pytz
-import requests
 
 # Import shared utilities
 from bot_utils import (
@@ -22,133 +19,39 @@ from bot_utils import (
 )
 from client import AimHarderClient
 
-
-def wait_until_target_time(target_hour: int, target_minute: int, skip_wait: bool = False) -> None:
-    """
-    Wait until the target booking time (e.g. 12:00 Madrid).
-    Handles both winter (UTC+1) and summer (UTC+2) automatically.
-    Sleeps 1s past the target so the booking window is guaranteed to be open.
-    """
-    if skip_wait:
-        print("⏩ Skipping wait (--skip-wait flag set)")
-        return
-
-    tz = pytz.timezone(TIMEZONE)
-    now = datetime.now(tz)
-
-    # Create target time for today
-    target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-
-    # If we're past target time, no need to wait
-    if now >= target:
-        print(f"⏰ Current time ({now.strftime('%H:%M:%S')}) is past target ({target.strftime('%H:%M')}). Proceeding immediately.")
-        return
-
-    wait_seconds = (target - now).total_seconds()
-    print(f"⏳ Current Madrid time: {now.strftime('%H:%M:%S')}")
-    print(f"⏳ Target time: {target.strftime('%H:%M:%S')}")
-    print(f"⏳ Waiting {wait_seconds:.0f} seconds ({wait_seconds/60:.1f} minutes)...")
-
-    # Wait in chunks to show progress
-    while True:
-        now = datetime.now(tz)
-        remaining = (target - now).total_seconds()
-
-        if remaining <= 0:
-            # Sleep 1s past the target so the booking window is open
-            time.sleep(1)
-            print("✅ Target time reached! Proceeding with booking...")
-            break
-
-        # Sleep for min(30 seconds, remaining time)
-        sleep_time = min(30, remaining)
-        time.sleep(sleep_time)
-
-        if remaining > 30:
-            print(f"   ⏳ {remaining:.0f}s remaining...")
-
-
-
-
-def load_schedule(path: str = "schedule.json") -> dict:
-    """Load the weekly schedule from JSON file."""
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-
-
-
-
-
-def find_matching_class(classes: list, target_time: str, target_name: str) -> Optional[dict]:
-    """
-    Find a class matching the target time and name.
-    """
-    # Normalize target time: "19:00" -> "1900"
-    target_time_normalized = target_time.replace(":", "")
-    
-    for cls in classes:
-        # Common field names for time
-        class_time = cls.get("timeid", cls.get("time", cls.get("startTime", "")))
-        # Common field names for class name
-        class_name = cls.get("className", cls.get("name", cls.get("activity", "")))
-        
-        # Normalize API time format: "0700_60" -> "0700", "07:00" -> "0700"
-        if isinstance(class_time, str):
-            # Handle "0700_60" format (time_duration)
-            if "_" in class_time:
-                class_time_normalized = class_time.split("_")[0]
-            else:
-                # Handle "07:00" or "07:00:00" format
-                class_time_normalized = class_time.replace(":", "")[:4]
-        else:
-            class_time_normalized = str(class_time)
-        
-        time_match = class_time_normalized == target_time_normalized
-        name_match = target_name.lower() in class_name.lower()
-        
-        if time_match and name_match:
-            print(f"✅ Found matching class: {class_name} at {class_time}")
-            
-            # Check if already booked
-            is_booked = cls.get("booked") or cls.get("isBooked") or cls.get("reservada")
-            if is_booked:
-                print(f"⚠️ Class '{class_name}' at {class_time} appears to be ALREADY BOOKED.")
-                cls["_is_already_booked"] = True # Mark for caller
-            
-            return cls
-    
-    return None
-
+from dotenv import load_dotenv
 
 
 
 
 def print_and_notify_booking(box_name: str, class_name: str, display_time: str, full_date_str: str, status: str, err: str = ""):
+    email = os.environ.get("EMAIL")
     if status == "CONFIRMED":
-        print(f"✅ Successfully booked '{class_name}' at {display_time} on {full_date_str}")
+        print(f"✅ Successfully booked '{class_name}' at {display_time} on {full_date_str} for {email}")
         msg = (
             f"✅ <b>Booking CONFIRMED</b>\n"
             f"<b>Box:</b> {box_name}\n"
+            f"<b>User:</b> {email}\n"
             f"<b>Class:</b> {class_name}\n"
             f"<b>Time:</b> {display_time}\n"
             f"<b>Date:</b> {full_date_str}"
         )
     elif status == "DRY_RUN":
-        print(f"🔵 DRY RUN: Would book class '{class_name}' for {full_date_str}")
+        print(f"🔵 DRY RUN: Would book class '{class_name}' on {full_date_str} for {email}")
         msg = (
             f"🔵 <b>DRY RUN</b>\n"
             f"<b>Box:</b> {box_name}\n"
+            f"<b>User:</b> {email}\n"
             f"<b>Class:</b> {class_name}\n"
             f"<b>Time:</b> {display_time}\n"
             f"<b>Date:</b> {full_date_str}"
         )
     else:
-        print(f"❌ Booking failed. {err}")
+        print(f"❌ Booking failed for {email}.\n{err}")
         msg = (
             f"❌ <b>Booking FAILED</b>\n"
             f"<b>Box:</b> {box_name}\n"
+            f"<b>User:</b> {email}\n"
             f"<b>Class:</b> {class_name}\n"
             f"<b>Time:</b> {display_time}\n"
             f"<b>Date:</b> {full_date_str}\n"
@@ -182,7 +85,7 @@ def process_booking(client: AimHarderClient, class_info: dict, target_date: date
 
     try:
         resp = client.book_class(class_id, target_date)
-        print(f"📡 API response: {resp}")
+        # print(f"📡 API response: {resp}")
         book_state = resp.get("bookState")
         if book_state == 1:
             print_and_notify_booking(client.box_name, class_name, display_time, full_date_str, "CONFIRMED")
@@ -195,26 +98,53 @@ def process_booking(client: AimHarderClient, class_info: dict, target_date: date
         print_and_notify_booking(client.box_name, class_name, display_time, full_date_str, "FAILED", str(e))
         return False
 
-
-
-def main():
-    days_adv_env = os.environ.get("DAYS_AHEAD") or os.environ.get("days-ahead") or 2
-
-    parser = argparse.ArgumentParser(description="AimHarder Bot")
-    parser.add_argument("--dry-run", action="store_true", help="Don't actually book, just show what would be booked")
-    parser.add_argument("--days-ahead", dest="days_ahead", type=int, default=int(days_adv_env), help="Book for N days ahead (default: 2)")
-    parser.add_argument("--schedule", type=str, default="schedule.json", help="Path to schedule JSON file")
-    parser.add_argument("--skip-wait", action="store_true", help="Skip waiting for target time (for testing)")
-    parser.add_argument("--box-name", type=str, default=None, help="Optional override for box name (subdomain)")
-    parser.add_argument("--box-id", type=int, default=None, help="Optional override for box ID")
-    # TARGET_HOUR_GMT1: booking open hour in GMT+1 / Madrid local time (Europe/Madrid).
-    # Falls back to TARGET_HOUR for backwards compatibility.
-    _default_hour = int(os.environ.get("TARGET_HOUR_GMT1", os.environ.get("TARGET_HOUR", 12)))
-    parser.add_argument("--target-hour", type=int, default=_default_hour, help="Target hour in Madrid time (0-23) to trigger booking, default: 12")
-    parser.add_argument("--target-minute", type=int, default=int(os.environ.get("TARGET_MINUTE", 0)), help="Target minute to run (0-59), default: 0")
-    parser.add_argument("--update-status", action="store_true", help="Just update the booking status JSON and exit")
-    args = parser.parse_args()
+def find_matching_class(classes: list, target_time: str, target_name: str) -> Optional[dict]:
+    """
+    Find a class matching the target time and name.
+    """
+    # Normalize target time: "19:00" -> "1900"
+    target_time_normalized = target_time.replace(":", "")
     
+    for box_class in classes:
+        # Common field names for time
+        class_time = box_class.get("timeid", box_class.get("time", box_class.get("startTime", "")))
+        # Common field names for class name
+        class_name = box_class.get("className", box_class.get("name", box_class.get("activity", "")))
+        
+        # Normalize API time format: "0700_60" -> "0700", "07:00" -> "0700"
+        if isinstance(class_time, str):
+            # Handle "0700_60" format (time_duration)
+            if "_" in class_time:
+                class_time_normalized = class_time.split("_")[0]
+            else:
+                # Handle "07:00" or "07:00:00" format
+                class_time_normalized = class_time.replace(":", "")[:4]
+        else:
+            class_time_normalized = str(class_time)
+        
+        time_match = class_time_normalized == target_time_normalized
+        name_match = target_name.lower() in class_name.lower()
+        
+        if time_match and name_match:
+            print(f"✅ Found matching class: {class_name} at {class_time}")
+            
+            # Check if already booked
+            ocupation = box_class.get("ocupation", None)
+            if ocupation is None:
+                raise ValueError(f"Class data missing 'ocupation' field: {box_class}")
+            limit = box_class.get("limit", None)
+            if limit is None:
+                raise ValueError(f"Class data missing 'limit' field: {box_class}")
+            
+            if ocupation >= limit:
+                print(f"⚠️ Clase de '{class_name}' a las {class_time} LLENA.")
+                box_class["_is_already_booked"] = True # Mark for caller
+            
+            return box_class
+    
+    return None
+
+def book_class(args: argparse.Namespace):
     # Get credentials from environment
     email = os.environ.get("EMAIL")
     password = os.environ.get("PASSWORD")
@@ -223,22 +153,13 @@ def main():
         print("❌ Missing credentials. Set EMAIL and PASSWORD environment variables.")
         sys.exit(1)
     
-    # Load schedule
-    try:
-        box = load_schedule(args.schedule)
-    except FileNotFoundError:
-        print(f"❌ Schedule file not found: {args.schedule}")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"❌ Invalid JSON in schedule file: {e}")
-        sys.exit(1)
     
     # Read box name and ID, preferring arguments, then environment variables, then schedule JSON.
     env_box_id = os.environ.get("BOX_ID") or os.environ.get("box-id")
     env_box_name = os.environ.get("BOX_NAME") or os.environ.get("box-name")
     
-    box_id_val = args.box_id or (int(env_box_id) if env_box_id else None) or box.get("id") or DEFAULT_BOX_ID
-    box_name = args.box_name or env_box_name or box.get("name") or DEFAULT_BOX_NAME
+    box_id_val = args.box_id or (int(env_box_id) if env_box_id else None) or DEFAULT_BOX_ID
+    box_name = args.box_name or env_box_name or DEFAULT_BOX_NAME
     box_id = int(box_id_val) if box_id_val else 0
 
     try:
@@ -247,10 +168,6 @@ def main():
         print(f"❌ {e}")
         sys.exit(1)
 
-    if args.update_status:
-        # Assuming update_booking_status was defined somewhere or ignored
-        # update_booking_status(client.session, box, box_name, box_id)
-        return
     
     # Determine target date
     tz = pytz.timezone(TIMEZONE)
@@ -259,23 +176,12 @@ def main():
     day_name = target_date.strftime("%A")
     
     print(f"📅 Target date: {target_date.strftime('%Y-%m-%d')} ({day_name})")
-    
-    # Check if we should wait
-    day_schedule = box.get(day_name)
-    print(f"📅 day_schedule:" ,day_schedule)
-
-
-    if day_schedule:
-        wait_until_target_time(args.target_hour, args.target_minute, skip_wait=args.skip_wait)
-    else:
-        print(f"ℹ️ No classes scheduled for {day_name}.")
-        return
 
     # Process booking
     print(f"\n🚀 Processing Box: {box_name} (ID: {box_id})")
     
-    target_time = day_schedule.get("time")
-    target_class = day_schedule.get("class_name")
+    target_time = f"{args.target_hour:02d}:{args.target_minute:02d}"
+    target_class = "CROSSFIT"
     
     print(f"🎯 Target: {target_class} at {target_time}")
     
@@ -308,7 +214,32 @@ def main():
         print("\n🏁 Booking completed successfully.")
     else:
         print("\n❌ Booking failed. Check the logs above for details.")
-        sys.exit(1)
+
+def main():
+    days_adv_env = os.environ.get("DAYS_AHEAD") or os.environ.get("days-ahead") or 3
+    _default_hour = int(os.environ.get("TARGET_HOUR_GMT1", os.environ.get("TARGET_HOUR", 20)))
+
+    parser = argparse.ArgumentParser(description="AimHarder Bot")
+    parser.add_argument("--dry-run", action="store_true", help="Don't actually book, just show what would be booked")
+    parser.add_argument("--days-ahead", dest="days_ahead", type=int, default=int(days_adv_env), help="Book for N days ahead (default: 3)")
+    parser.add_argument("--box-name", type=str, default=None, help="Optional override for box name (subdomain)")
+    parser.add_argument("--box-id", type=int, default=None, help="Optional override for box ID")
+    # TARGET_HOUR_GMT1: booking open hour in GMT+1 / Madrid local time (Europe/Madrid).
+    parser.add_argument("--target-hour", type=int, default=_default_hour, help="Target hour in Madrid time (0-23) to trigger booking, default: 20")
+    parser.add_argument("--target-minute", type=int, default=int(os.environ.get("TARGET_MINUTE", 0)), help="Target minute to run (0-59), default: 0")
+    args = parser.parse_args()
+
+    # Load environment variables from .env file if it exists
+    for env_file in ["manu.env", "sara.env"]: #
+        if os.path.exists(env_file):
+            load_dotenv(env_file, override=True)
+            args.box_name = os.environ.get("BOX_NAME", args.box_name)
+            args.box_id = int(os.environ.get("BOX_ID", args.box_id))
+            args.days_ahead = int(os.environ.get("DAYS_AHEAD", args.days_ahead))
+            args.target_hour = int(os.environ.get("TARGET_HOUR_GMT1", args.target_hour))
+            args.target_minute = int(os.environ.get("TARGET_MINUTE", args.target_minute))
+
+            book_class(args)
 
 
 if __name__ == "__main__":
