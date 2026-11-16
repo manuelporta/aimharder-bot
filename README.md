@@ -28,20 +28,8 @@ The codebase leverages a clean, Object-Oriented design:
 
 Each box is configured with its own schedule file and GitHub Actions workflow.
 
-### 1. Schedule JSON (`schedule_XXXXX.json`)
-Create a JSON file for your box (e.g., `schedule_10002.json`) with the following format:
-```json
-{
-  "id": "10002",
-  "name": "boxname",
-  "Monday": { "time": "18:30", "class_name": "CrossFit" },
-  "Friday": { "time": "17:30", "class_name": "Community WOD" },
-  ...
-}
-```
-
-### 2. GitHub Actions Workflow
-Each box has its own workflow file in `.github/workflows/`. You can configure the specific booking opening time for each box using the `TARGET_HOUR` and `TARGET_MINUTE` variables:
+### 1. GitHub Actions Workflow
+Set up your workflow file in `.github/workflows/`. You can configure the specific parameters for each workflow using the `TARGET_HOUR` and `TARGET_MINUTE` variables:
 
 ```yaml
 env:
@@ -52,19 +40,27 @@ env:
 ## Usage
 
 ### Local Execution
-Set your credentials and runs the script targeting a specific schedule. By default, it will wait for the target time unless you use `--skip-wait`.
+Set your credentials and runs the 'local.py' script targeting a specific schedule.
+To set your credential, create a .env file containing the following data and place its name in local.py
 
 ```bash
-export EMAIL="your_email@gmail.com"
-export PASSWORD="your_password"
-python main.py --schedule schedule_10002.json
+EMAIL="your_email@gmail.com"
+PASSWORD="your_password"
+BOX_NAME="your_box_name"
+BOX_ID="your_box_id"
+DAYS_AHEAD="number_of_days_until_reservation_date"
+TARGET_HOUR_GMT1="reservation_hour"
+TARGET_MINUTE="reservation_minute"
+TELEGRAM_CHAT_ID="your_telegram_chat_id"
+TELEGRAM_TOKEN="your_telegram_bot_token"
+python main.py
 ```
 
 ### Dry Run (Testing)
-To test your configuration without actually booking a class, use the `--dry-run` flag. Combine it with `--skip-wait` and `--days-ahead 0` (for today) or `1` (for tomorrow) to see the matching logic in action:
+To test your configuration without actually booking a class, use the `--dry-run` flag. Combine it `--days-ahead 0` (for today) or `1` (for tomorrow) to see the matching logic in action:
 
 ```bash
-python main.py --schedule schedule_10002.json --dry-run --skip-wait --days-ahead 0
+python main.py --dry-run --days-ahead 0
 ```
 
 ### GitHub Actions
@@ -73,10 +69,14 @@ The bot runs automatically on the schedule defined in the `.yml` files.
 **Required Secrets for Booking:**
 - `EMAIL`: Your AimHarder login email.
 - `PASSWORD`: Your AimHarder login password.
+- `BOX_NAME`: Your box subdomain.
+- `BOX_ID`: Your box ID.
 
 **Optional Secrets for Notifications:**
 - `TELEGRAM_TOKEN`: Your Telegram Bot token (from [@BotFather](https://t.me/botfather)).
 - `TELEGRAM_CHAT_ID`: Your personal Telegram Chat ID (from [@userinfobot](https://t.me/userinfobot)).
+
+Add these under `Settings > Secrets and variables > Actions`. The scheduled workflow must also be present on the repository's default branch, and Actions must be enabled for the fork.
 
 ## Telegram Setup
 1.  Message [@BotFather](https://t.me/botfather) to create a new bot and get your **API Token**.

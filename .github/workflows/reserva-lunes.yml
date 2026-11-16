@@ -1,18 +1,18 @@
-name: Reserva la clase de crossfit del lunes a las 20h
+name: MondayBooking
 
 on:
   schedule:
     # GitHub Actions cron times are ALWAYS UTC.
-    # Madrid is UTC+1 in winter (CET) and UTC+2 in summer (CEST).
-    - cron: "19 02 * 1,2,11,12 * FRI"   # Winter (Nov-Feb): 16:15 UTC = 17:15 CET  (UTC+1)
-    - cron: "20 02 * 3-10 * FRI"        # Summer (Mar-Oct): 15:15 UTC = 17:15 CEST (UTC+2)
+    - cron: "01 19 * 1,2,11,12 FRI"      # Winter (Nov-Feb): 20:00 CET
+    - cron: "01 18 * 3-10 FRI"           # Summer (Mar-Oct): 20:00 CEST
   workflow_dispatch:              # Manual trigger
+
+permissions:
+  contents: read
 
 jobs:
   book:
     runs-on: ubuntu-latest
-    permissions:
-      packages: read
 
     steps:
       - name: Checkout repository
@@ -31,12 +31,14 @@ jobs:
         env:
           EMAIL: ${{ secrets.EMAIL }}
           PASSWORD: ${{ secrets.PASSWORD }}
-          # TARGET_HOUR_GMT1: booking open time in Madrid local time (NOT UTC).
-          # The Python script (wait_until_target_time) converts this to UTC internally using pytz.
-          TARGET_HOUR_GMT1: 20
-          TARGET_MINUTE: 00
+          BOX_NAME: ${{ secrets.BOX_NAME }}
+          BOX_ID: ${{ secrets.BOX_ID }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Target class start time in Madrid local time (not UTC).
+          TARGET_HOUR: 20
+          TARGET_MINUTE: 00
+
         run: |
           echo "🚀 Reservando clase..."
           python main.py --days-ahead 3
