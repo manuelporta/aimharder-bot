@@ -19,9 +19,6 @@ from bot_utils import (
 )
 from client import AimHarderClient
 
-from dotenv import load_dotenv
-
-
 
 
 def print_and_notify_booking(box_name: str, class_name: str, display_time: str, full_date_str: str, status: str, err: str = ""):
@@ -216,30 +213,17 @@ def book_class(args: argparse.Namespace):
         print("\n❌ Booking failed. Check the logs above for details.")
 
 def main():
-    days_adv_env = os.environ.get("DAYS_AHEAD") or os.environ.get("days-ahead") or 3
-    _default_hour = int(os.environ.get("TARGET_HOUR_GMT1", os.environ.get("TARGET_HOUR", 20)))
 
     parser = argparse.ArgumentParser(description="AimHarder Bot")
     parser.add_argument("--dry-run", action="store_true", help="Don't actually book, just show what would be booked")
-    parser.add_argument("--days-ahead", dest="days_ahead", type=int, default=int(days_adv_env), help="Book for N days ahead (default: 3)")
+    parser.add_argument("--days-ahead", dest="days_ahead", type=int, default=int(os.environ.get("DAYS_AHEAD", 3)), help="Book for N days ahead (default: 3)")
     parser.add_argument("--box-name", type=str, default=None, help="Optional override for box name (subdomain)")
     parser.add_argument("--box-id", type=int, default=None, help="Optional override for box ID")
-    # TARGET_HOUR_GMT1: booking open hour in GMT+1 / Madrid local time (Europe/Madrid).
-    parser.add_argument("--target-hour", type=int, default=_default_hour, help="Target hour in Madrid time (0-23) to trigger booking, default: 20")
+    parser.add_argument("--target-hour", type=int, default=int(os.environ.get("TARGET_HOUR", 20)), help="Target class start hour in Madrid time (0-23), default: 20")
     parser.add_argument("--target-minute", type=int, default=int(os.environ.get("TARGET_MINUTE", 0)), help="Target minute to run (0-59), default: 0")
     args = parser.parse_args()
 
-    # Load environment variables from .env file if it exists
-    for env_file in ["manu.env", "sara.env"]: #
-        if os.path.exists(env_file):
-            load_dotenv(env_file, override=True)
-            args.box_name = os.environ.get("BOX_NAME", args.box_name)
-            args.box_id = int(os.environ.get("BOX_ID", args.box_id))
-            args.days_ahead = int(os.environ.get("DAYS_AHEAD", args.days_ahead))
-            args.target_hour = int(os.environ.get("TARGET_HOUR_GMT1", args.target_hour))
-            args.target_minute = int(os.environ.get("TARGET_MINUTE", args.target_minute))
-
-            book_class(args)
+    book_class(args)
 
 
 if __name__ == "__main__":
