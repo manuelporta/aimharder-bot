@@ -3,8 +3,8 @@ name: MondayBooking
 on:
   schedule:
     # GitHub Actions cron times are ALWAYS UTC.
-    - cron: "01 19 * 1,2,11,12 FRI"      # Winter (Nov-Feb): 20:00 CET
-    - cron: "01 18 * 3-10 FRI"           # Summer (Mar-Oct): 20:00 CEST
+    - cron: "01 19 * 1,2,11,12 FRI"      # Winter (Nov-Feb): 20:01 CET
+    - cron: "01 18 * 3-10 FRI"           # Summer (Mar-Oct): 20:01 CEST
   workflow_dispatch:              # Manual trigger
 
 permissions:
@@ -12,8 +12,19 @@ permissions:
 
 jobs:
   book:
+    name: Reserva (${{ matrix.account }})
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - account: manu
+            email_secret: EMAIL_MANU
+            password_secret: PASSWORD_MANU
+          - account: sara
+            email_secret: EMAIL_SARA
+            password_secret: PASSWORD_SARA
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,8 +40,8 @@ jobs:
 
       - name: Run booking script
         env:
-          EMAIL: ${{ secrets.EMAIL }}
-          PASSWORD: ${{ secrets.PASSWORD }}
+          EMAIL: ${{ secrets[matrix.email_secret] }}
+          PASSWORD: ${{ secrets[matrix.password_secret] }}
           BOX_NAME: ${{ secrets.BOX_NAME }}
           BOX_ID: ${{ secrets.BOX_ID }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
